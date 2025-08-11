@@ -1,0 +1,538 @@
+# Kafka Connect Helm Chart Values
+# Configuration for deploying Confluent Kafka Connect
+
+## @section Global Configuration
+## Global Docker image parameters
+## Please, note that this will override the image parameters, including dependencies, configured to use the global value
+## Current available global Docker image parameters: imageRegistry, imagePullSecrets and storageClass
+
+## @param global.imageRegistry Global Docker image registry
+## @param global.imagePullSecrets Global Docker registry secret names as an array
+## @param global.storageClass Global StorageClass for Persistent Volume(s)
+##
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+## @section Common parameters
+
+## @param nameOverride String to partially override kafka-connect.fullname
+##
+nameOverride: ""
+## @param fullnameOverride String to fully override kafka-connect.fullname
+##
+fullnameOverride: ""
+## @param commonLabels Labels to add to all deployed objects
+##
+commonLabels: {}
+## @param commonAnnotations Annotations to add to all deployed objects
+##
+commonAnnotations: {}
+
+
+awsCredentials:
+  enabled: true
+  secretName: aws-iam-credentials
+  keys:
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+    - AWS_SESSION_TOKEN
+
+## @section Kafka Connect Image parameters
+
+## Kafka Connect image
+## ref: https://hub.docker.com/r/confluentinc/cp-kafka-connect/
+## @param image.registry Kafka Connect image registry
+## @param image.repository Kafka Connect image repository
+## @param image.tag Kafka Connect image tag (immutable tags are recommended)
+## @param image.digest Kafka Connect image digest in the way sha256:aa.... Please note this parameter, if set, will override the tag
+## @param image.pullPolicy Kafka Connect image pull policy
+## @param image.pullSecrets Kafka Connect image pull secrets
+##
+image:
+  registry: ""
+  repository: 079957391273.dkr.ecr.ap-southeast-1.amazonaws.com/aisdph/kafka-connect
+  tag: "7.2.2with-plugins-v2"
+  digest: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+## @section Kafka Connect Configuration parameters
+
+## @param replicaCount Number of Kafka Connect replicas to deploy
+##
+replicaCount: 3
+
+## @param config Kafka Connect configuration
+## Configuration for Kafka Connect worker
+##
+config:
+  # Kafka cluster connection
+  CONNECT_BOOTSTRAP_SERVERS: "dt-redpanda-0.dt-redpanda.dt.svc.cluster.local:9093,dt-redpanda-1.dt-redpanda.dt.svc.cluster.local:9093,dt-redpanda-2.dt-redpanda.dt.svc.cluster.local:9093"
+  CONNECT_REST_PORT: "8083"
+  CONNECT_GROUP_ID: kafka-connect
+  
+  # Storage topics configuration
+  CONNECT_CONFIG_STORAGE_TOPIC: kafka-connect-config
+  CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+  CONNECT_OFFSET_STORAGE_TOPIC: kafka-connect-offset
+  CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+  CONNECT_OFFSET_STORAGE_PARTITIONS: "-1"
+  CONNECT_OFFSET_PARTITION_NAME: kafka-connect.1
+  CONNECT_STATUS_STORAGE_TOPIC: kafka-connect-status
+  CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: "1"
+  CONNECT_STATUS_STORAGE_PARTITIONS: "-1"
+  
+  # Converters configuration
+  CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+  CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+  CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "true"
+  CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+  CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+  
+  # Monitoring and interceptors
+  CONNECT_PRODUCER_INTERCEPTOR_CLASSES: io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor
+  CONNECT_CONSUMER_INTERCEPTOR_CLASSES: io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor
+  
+  # Plugin and networking
+  # CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect.dt.svc.cluster.local
+  CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+  CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+
+  CONNECT_CONFLUENT_MONITORING_INTERCEPTOR_TOPIC_AUTO_CREATE: "false"
+  CONNECT_CONFLUENT_MONITORING_INTERCEPTOR_TOPIC_SKIP_VALIDATION: "true"
+
+## @param extraConfig Extra configuration parameters for Kafka Connect
+## Additional environment variables not covered by config section
+##
+extraConfig: {}
+
+## @section Authentication Configuration
+
+## @param auth.enabled Enable authentication
+## @param auth.sasl SASL configuration
+##
+auth:
+  enabled: true
+  sasl:
+    enabled: true
+    protocol: "SASL_PLAINTEXT"
+    mechanism: "SCRAM-SHA-512"
+    # username: "kafka-connect"
+    # password: "kafkaconnect123"  # RedPanda superuser credentials
+    username: "superuser"
+    password: "pw123!"
+
+  ssl:
+    enabled: false
+    keystore:
+      password: ""
+    truststore:
+      password: ""
+  extraSecrets: {}
+
+## @section Logging Configuration
+
+## @param logging.enabled Enable custom logging configuration
+## @param logging.level Log level configuration
+## @param logging.rootLevel Root log level
+##
+logging:
+  enabled: true
+  level: "org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR"
+  rootLevel: "INFO"
+
+## @section Resource Management
+
+## Kafka Connect resource requests and limits
+## ref: https://kubernetes.io/docs/user-guide/compute-resources/
+## @param resources.limits The resources limits for the Kafka Connect containers
+## @param resources.requests The requested resources for the Kafka Connect containers
+##
+resources:
+  limits:
+    cpu: "2"
+    memory: "2Gi"
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+
+## @section Security Context Configuration
+
+## Configure Pods Security Context
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
+## @param podSecurityContext.enabled Enable Kafka Connect pods' Security Context
+## @param podSecurityContext.fsGroup Set Kafka Connect pod's Security Context fsGroup
+## @param podSecurityContext.runAsUser Set Kafka Connect pod's Security Context runAsUser
+## @param podSecurityContext.runAsGroup Set Kafka Connect pod's Security Context runAsGroup
+## @param podSecurityContext.runAsNonRoot Set Kafka Connect pod's Security Context runAsNonRoot
+##
+podSecurityContext:
+  enabled: true
+  fsGroup: 0
+  runAsUser: 0
+  runAsGroup: 0
+  runAsNonRoot: false
+
+## Configure Container Security Context
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container
+## @param securityContext.enabled Enable Kafka Connect containers' Security Context
+## @param securityContext.runAsUser Set Kafka Connect containers' Security Context runAsUser
+## @param securityContext.runAsNonRoot Set Kafka Connect containers' Security Context runAsNonRoot
+## @param securityContext.allowPrivilegeEscalation Force the child process to be run as nonprivilege
+## @param securityContext.capabilities.drop List of capabilities to be dropped
+## @param securityContext.readOnlyRootFilesystem Mount / (root) as a readonly filesystem
+##
+securityContext:
+  enabled: true
+  runAsUser: 0
+  runAsNonRoot: false
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+## @section Health Checks Configuration
+
+## @param startupProbe.enabled Enable startupProbe on Kafka Connect containers
+## @param startupProbe.initialDelaySeconds Initial delay seconds for startupProbe
+## @param startupProbe.periodSeconds Period seconds for startupProbe
+## @param startupProbe.timeoutSeconds Timeout seconds for startupProbe
+## @param startupProbe.failureThreshold Failure threshold for startupProbe
+## @param startupProbe.successThreshold Success threshold for startupProbe
+##
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /
+    port: connect
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 12
+  successThreshold: 1
+
+## @param livenessProbe.enabled Enable livenessProbe on Kafka Connect containers
+## @param livenessProbe.initialDelaySeconds Initial delay seconds for livenessProbe
+## @param livenessProbe.periodSeconds Period seconds for livenessProbe
+## @param livenessProbe.timeoutSeconds Timeout seconds for livenessProbe
+## @param livenessProbe.failureThreshold Failure threshold for livenessProbe
+## @param livenessProbe.successThreshold Success threshold for livenessProbe
+##
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /
+    port: connect
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+  successThreshold: 1
+
+## @param readinessProbe.enabled Enable readinessProbe on Kafka Connect containers
+## @param readinessProbe.initialDelaySeconds Initial delay seconds for readinessProbe
+## @param readinessProbe.periodSeconds Period seconds for readinessProbe
+## @param readinessProbe.timeoutSeconds Timeout seconds for readinessProbe
+## @param readinessProbe.failureThreshold Failure threshold for readinessProbe
+## @param readinessProbe.successThreshold Success threshold for readinessProbe
+##
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /
+    port: connect
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1
+
+## @section Deployment Configuration
+
+## @param strategy.type Kafka Connect deployment strategy type
+## @param strategy.rollingUpdate Kafka Connect deployment rolling update configuration
+##
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+## @param podAnnotations Annotations for Kafka Connect pods
+##
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8083"
+  prometheus.io/path: "/metrics"
+
+## @param nodeSelector Node labels for Kafka Connect pods assignment
+##
+nodeSelector: {}
+
+## @param tolerations Tolerations for Kafka Connect pods assignment
+##
+tolerations: []
+
+## @param affinity Affinity for Kafka Connect pods assignment
+##
+affinity: {}
+
+## @param topologySpreadConstraints Topology Spread Constraints for pod assignment spread across your cluster among failure-domains
+##
+topologySpreadConstraints: []
+
+## @section Service Account Configuration
+
+## @param serviceAccount.create Specifies whether a service account should be created
+## @param serviceAccount.annotations Annotations to add to the service account
+## @param serviceAccount.name The name of the service account to use.
+## @param serviceAccount.automountServiceAccountToken Automount service account token for the server service account
+##
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+  automountServiceAccountToken: false
+
+## @section Service Configuration
+
+## @param service.type Kafka Connect service type
+## @param service.port Kafka Connect service HTTP port
+## @param service.annotations Additional custom annotations for Kafka Connect service
+##
+service:
+  type: ClusterIP
+  port: 8083
+  annotations: {}
+
+## @section Ingress Configuration
+
+## @param ingress.enabled Enable ingress record generation for Kafka Connect
+## @param ingress.ingressClassName IngressClass that will be be used to implement the Ingress (Kubernetes 1.18+)
+## @param ingress.pathType Ingress path type
+## @param ingress.annotations Additional annotations for the Ingress resource. To enable certificate autogeneration, place here your cert-manager annotations.
+## @param ingress.hosts An array with hosts and paths
+## @param ingress.tls An array with the tls configuration
+##
+ingress:
+  enabled: false
+  ingressClassName: ""
+  pathType: ImplementationSpecific
+  annotations: {}
+  hosts:
+    - host: kafka-connect.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+## @section Auto Scaling Configuration
+
+## @param autoscaling.enabled Enable Horizontal POD autoscaling for Kafka Connect
+## @param autoscaling.minReplicas Minimum number of Kafka Connect replicas
+## @param autoscaling.maxReplicas Maximum number of Kafka Connect replicas
+## @param autoscaling.targetCPUUtilizationPercentage Target CPU utilization percentage
+## @param autoscaling.targetMemoryUtilizationPercentage Target Memory utilization percentage
+##
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+## @section Pod Disruption Budget Configuration
+
+## @param podDisruptionBudget.enabled Enable a Pod Disruption Budget creation
+## @param podDisruptionBudget.minAvailable Minimum number/percentage of pods that should remain scheduled
+## @param podDisruptionBudget.maxUnavailable Maximum number/percentage of pods that may be made unavailable
+##
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  maxUnavailable: ""
+
+## @section Plugin Configuration
+
+## @param plugins.enabled Enable plugin installation via init containers
+## @param plugins.installMethod Method to install plugins (confluent-hub or maven)
+## @param plugins.list List of plugins to install
+##
+# plugins:
+#   enabled: true
+#   installMethod: "maven"
+#   list:
+#     - name: "debezium-postgres"
+#       url: "https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/2.3.0.Final/debezium-connector-postgres-2.3.0.Final-plugin.tar.gz"
+#       version: "2.3.0.Final"
+#     - name: "kafka-connect-s3"
+#       url: "https://api.hub.confluent.io/api/plugins/confluentinc/kafka-connect-s3/versions/10.6.7/confluentinc-kafka-connect-s3-10.6.7.zip"
+#       version: "10.6.7"
+
+## @param extraVolumeMounts Optionally specify extra list of additional volumeMounts for the Kafka Connect container(s)
+## Note: Connector configs are automatically mounted from ConfigMap at /etc/kafka-connect/connectors
+##
+extraVolumeMounts:
+  - name: plugin
+    mountPath: /usr/share/confluent-hub-components
+  - name: kafka-connect-config
+    mountPath: /etc/kafka-connect/config
+
+## @param extraVolumes Optionally specify extra list of additional volumes for the Kafka Connect pod(s)
+## Note: Connector ConfigMap volumes are automatically added
+##
+extraVolumes:
+  - name: plugin
+    emptyDir: {}
+  - name: kafka-connect-config
+    emptyDir: {}
+  - name: kafka-config
+    emptyDir: {}
+
+
+sidecars: []
+
+## @param extraEnvFrom Extra environment variables to be set on Kafka Connect container from secrets or configmaps
+##
+extraEnvFrom:
+  - secretRef:
+      name: postgres-secret
+
+## @section Kafka Configuration (when kafka.create=true)
+
+## @param kafka.create Deploy Kafka as part of this chart
+##
+kafka:
+  create: false
+  fullnameOverride: kafka-connect-kafka
+  nameOverride: kafka-connect-kafka
+  defaultReplicationFactor: 1
+  deleteTopicEnable: true
+  heapOpts: "-Xmx1024m -Xms1024m"
+  numPartitions: 1
+  persistence:
+    enabled: false
+  provisioning:
+    enabled: true
+    topics:
+      - name: kafka-connect-offset
+        config:
+          cleanup.policy: compact
+      - name: kafka-connect-config
+        config:
+          cleanup.policy: compact
+      - name: kafka-connect-status
+        config:
+          cleanup.policy: compact
+  replicaCount: 1
+  zookeeper:
+    persistence:
+      enabled: false
+
+## @section Schema Registry Configuration (when schema-registry.create=true)
+
+## @param schema-registry.create Deploy Schema Registry as part of this chart
+##
+schema-registry:
+  create: false
+  externalKafka:
+    brokers:
+      - PLAINTEXT://kafka-connect-kafka:9093
+  kafka:
+    enabled: false
+  zookeeper:
+    enabled: false
+
+## @section Connector Auto-Loading Configuration
+
+## @param connectors.autoLoad.enabled Enable automatic loading of connectors from ConfigMap
+## @param connectors.autoLoad.retryInterval Retry interval in seconds for connector loading
+## @param connectors.autoLoad.maxRetries Maximum number of retries for connector loading
+##
+connectors:
+  autoLoad:
+    enabled: true
+    retryInterval: 5
+    maxRetries: 12
+    # Connector loader endpoint configuration
+    connectHost: "kafka-connect"  # Use service name
+    connectPort: "8083"
+    connectUrl: ""   # Override full URL if needed
+    maxWaitTime: 300  # Maximum time to wait for Kafka Connect to be ready
+  
+  ## PostgreSQL Debezium Connector Configuration
+  debezium:
+    enabled: true
+    name: "debezium-postgres"
+    database:
+      hostname: "postgresql.dt.svc.cluster.local"
+      port: "5432"
+      user: "postgres"
+      password: "password123"
+      dbname: "testdb"
+    kafka:
+      bootstrapServers: "dt-redpanda-0.dt-redpanda.dt.svc.cluster.local:9093,dt-redpanda-1.dt-redpanda.dt.svc.cluster.local:9093,dt-redpanda-2.dt-redpanda.dt.svc.cluster.local:9093"
+      topicPrefix: "cdc"
+      serverName: "postgres-cdc"
+    schema:
+      includeList: "public"
+    table:
+      includeList: "public.*"
+    slot:
+      name: "debezium_slot"
+      dropOnStop: false
+    snapshot:
+      mode: "always"
+      # mode: "initial"
+      lockingMode: "minimal"
+  
+  ## JDBC Sink Connector Configuration  
+  jdbcSink:
+    enabled: true
+    name: "jdbc-sink-cdc"
+    database:
+      url: "jdbc:postgresql://postgresql.dt.svc.cluster.local:5432/cdcdb"
+      user: "postgres"
+      password: "password123"
+    topics:
+      regex: "cdc\\.public\\..*"
+    table:
+      nameFormat: "${topic}"
+    insert:
+      mode: "upsert"
+    batch:
+      size: "1000"
+  
+  ## CDC Log Connector Configuration
+  cdcLog:
+    enabled: true
+    name: "cdc-log"
+    database:
+      url: "jdbc:postgresql://postgresql.dt.svc.cluster.local:5432/cdcdb"
+      user: "postgres"
+      password: "password123"
+    topics:
+      regex: "cdc\\.public\\..*"
+    table:
+      nameFormat: "cdc_history"
+    batch:
+      size: "100"
+  
+## @section Connector Configuration Examples (Deprecated)
+## Connector configurations are now managed via ConfigMap instead of values.yaml
+## This section is kept for reference only
+##
+# Legacy connector configuration (now in ConfigMap):
+# connectors:
+#   debezium:
+#     enabled: true
+#     config:
+#       name: "debezium-postgres"
+#       connector.class: "io.debezium.connector.postgresql.PostgresConnector"
+#       database.hostname: "postgresql.dt.svc.cluster.local"
+#       database.port: "5432"
+#       topic.prefix: "cdc"
+#       # ... other configurations moved to ConfigMap

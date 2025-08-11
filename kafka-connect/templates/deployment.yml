@@ -1,0 +1,301 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kafka-connect.fullname" . }}
+  labels:
+    {{- include "kafka-connect.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  {{- with .Values.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "kafka-connect.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "kafka-connect.selectorLabels" . | nindent 8 }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- else }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "kafka-connect.serviceAccountName" . }}
+      {{- end }}
+      terminationGracePeriodSeconds: 10
+      {{- if .Values.podSecurityContext.enabled }}
+      securityContext:
+        {{- omit .Values.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      {{- with .Values.initContainers }}
+      initContainers:
+        {{- range . }}
+        - name: {{ .name }}
+          {{- if .image }}
+          image: {{ .image }}
+          {{- else }}
+          image: "{{ $.Values.image.registry | default "docker.io" }}/{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          {{- end }}
+          {{- with .command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if $.Values.securityContext.enabled }}
+          securityContext:
+            {{- omit $.Values.securityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- if .Values.securityContext.enabled }}
+          securityContext:
+            {{- omit .Values.securityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.image.registry }}
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          {{- else }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          {{- end }}
+          {{- if .Values.image.digest }}
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          {{- end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          
+          env:
+            {{- range $key, $value := .Values.config }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+
+            {{- if .Values.awsCredentials.enabled }}
+            {{- range $key := .Values.awsCredentials.keys }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.awsCredentials.secretName }}
+                  key: {{ $key }}
+            {{- end }}
+            {{- end }}
+
+            {{- if .Values.auth.enabled }}
+            {{- if .Values.auth.sasl.enabled }}
+            - name: CONNECT_SASL_JAAS_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kafka-connect.fullname" . }}-auth
+                  key: sasl-jaas-config
+                  optional: false
+            - name: CONNECT_PRODUCER_SASL_JAAS_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kafka-connect.fullname" . }}-auth
+                  key: sasl-jaas-config
+                  optional: false
+            - name: CONNECT_CONSUMER_SASL_JAAS_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kafka-connect.fullname" . }}-auth
+                  key: sasl-jaas-config
+                  optional: false
+            - name: CONNECT_ADMIN_SASL_JAAS_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kafka-connect.fullname" . }}-auth
+                  key: sasl-jaas-config
+                  optional: false
+            - name: CONNECT_SECURITY_PROTOCOL
+              value: {{ .Values.auth.sasl.protocol | quote }}
+            - name: CONNECT_SASL_MECHANISM
+              value: {{ .Values.auth.sasl.mechanism | quote }}
+            - name: CONNECT_PRODUCER_SECURITY_PROTOCOL
+              value: {{ .Values.auth.sasl.protocol | quote }}
+            - name: CONNECT_PRODUCER_SASL_MECHANISM
+              value: {{ .Values.auth.sasl.mechanism | quote }}
+            - name: CONNECT_CONSUMER_SECURITY_PROTOCOL
+              value: {{ .Values.auth.sasl.protocol | quote }}
+            - name: CONNECT_CONSUMER_SASL_MECHANISM
+              value: {{ .Values.auth.sasl.mechanism | quote }}
+            - name: CONNECT_ADMIN_SECURITY_PROTOCOL
+              value: {{ .Values.auth.sasl.protocol | quote }}
+            - name: CONNECT_ADMIN_SASL_MECHANISM
+              value: {{ .Values.auth.sasl.mechanism | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.logging.enabled }}
+            - name: CONNECT_LOG4J_LOGGERS
+              value: {{ .Values.logging.level | quote }}
+            {{- if .Values.logging.rootLevel }}
+            - name: CONNECT_LOG4J_ROOT_LOGLEVEL
+              value: {{ .Values.logging.rootLevel | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range $key, $value := .Values.extraConfig }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          ports:
+            - name: connect
+              containerPort: 8083
+              protocol: TCP
+
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe:
+            {{- omit .Values.startupProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            {{- omit .Values.livenessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe.enabled }}
+          readinessProbe:
+            {{- omit .Values.readinessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          volumeMounts:
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            - name: connector-configs
+              mountPath: /etc/kafka-connect/connectors
+              readOnly: true
+
+        # Sidecar container to auto-load connectors
+        - name: connector-loader
+          image: curlimages/curl:latest
+          command: ["/bin/sh"]
+          args: ["/etc/kafka-connect/load-connectors.sh"]
+          env:
+            # Kafka Connect endpoint configuration
+            - name: KAFKA_CONNECT_HOST
+              value: "{{ .Values.connectors.autoLoad.connectHost | default "localhost" }}"
+            - name: KAFKA_CONNECT_PORT
+              value: "{{ .Values.connectors.autoLoad.connectPort | default "8083" }}"
+            - name: KAFKA_CONNECT_URL
+              value: "{{ .Values.connectors.autoLoad.connectUrl | default "" }}"
+            # Service discovery configuration
+            - name: KAFKA_CONNECT_SERVICE_NAME
+              value: "{{ include "kafka-connect.fullname" . }}"
+            - name: KAFKA_CONNECT_NAMESPACE
+              value: "{{ .Release.Namespace }}"
+            # Retry and timeout configuration
+            - name: MAX_WAIT_TIME
+              value: "{{ .Values.connectors.autoLoad.maxWaitTime | default "300" }}"
+            - name: RETRY_INTERVAL
+              value: "{{ .Values.connectors.autoLoad.retryInterval | default "5" }}"
+            # Kubernetes environment detection
+            - name: KUBERNETES_SERVICE_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+                  apiVersion: v1
+          volumeMounts:
+            - name: connector-configs
+              mountPath: /etc/kafka-connect/connectors
+              readOnly: true
+            - name: connector-loader-script
+              mountPath: /etc/kafka-connect/load-connectors.sh
+              subPath: load-connectors.sh
+              readOnly: true
+          resources:
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+        {{- with .Values.sidecars }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+
+      volumes:
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        - name: connector-configs
+          configMap:
+            name: {{ include "kafka-connect.fullname" . }}-connectors
+            items:
+              - key: debezium-postgres-connector.json
+                path: debezium-postgres-connector.json
+              - key: jdbc-sink-connector.json
+                path: jdbc-sink-connector.json
+              - key: cdc-log-connector.json
+                path: cdc-log-connector.json
+        - name: connector-loader-script
+          configMap:
+            name: {{ include "kafka-connect.fullname" . }}-connectors
+            items:
+              - key: load-connectors.sh
+                path: load-connectors.sh
+            defaultMode: 0755
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

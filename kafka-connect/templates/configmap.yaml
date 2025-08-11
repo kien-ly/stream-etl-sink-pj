@@ -1,0 +1,349 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kafka-connect.fullname" . }}-connectors
+  labels:
+    {{- include "kafka-connect.labels" . | nindent 4 }}
+data:
+  {{- if .Values.connectors.debezium.enabled }}
+  debezium-postgres-connector.json: |
+    {
+      "name": "{{ .Values.connectors.debezium.name }}",
+      "config": {
+        "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+        "database.hostname": "{{ .Values.connectors.debezium.database.hostname }}",
+        "database.user": "{{ .Values.connectors.debezium.database.user }}",
+        "database.password": "{{ .Values.connectors.debezium.database.password }}",
+        "database.dbname": "{{ .Values.connectors.debezium.database.dbname }}",
+        "database.port": "{{ .Values.connectors.debezium.database.port }}",
+        "topic.prefix": "{{ .Values.connectors.debezium.kafka.topicPrefix }}",
+        "database.server.name": "{{ .Values.connectors.debezium.kafka.serverName }}",
+        "database.history.kafka.bootstrap.servers": "{{ .Values.connectors.debezium.kafka.bootstrapServers }}",
+        "database.history.kafka.topic": "schema-changes.postgres",
+        "slot.name": "{{ .Values.connectors.debezium.slot.name }}",
+        "schema.include.list": "{{ .Values.connectors.debezium.schema.includeList }}",
+        "table.include.list": "{{ .Values.connectors.debezium.table.includeList }}",
+        "topic.creation.enable": "true",
+        "topic.creation.default.partitions": "3",
+        "topic.creation.default.replication.factor": "1",
+        "topic.creation.groups": "cdc_group",
+        "topic.creation.cdc_group.include": "public.*",
+        "topic.creation.cdc_group.partitions": "3",
+        "topic.creation.cdc_group.replication.factor": "1",
+        "include.schema.changes": "true",
+        "include.query": "false",
+        "snapshot.mode": "{{ .Values.connectors.debezium.snapshot.mode }}",
+        "snapshot.locking.mode": "{{ .Values.connectors.debezium.snapshot.lockingMode }}",
+        "snapshot.delay.ms": "0",
+        "snapshot.fetch.size": "1024",
+        "max.queue.size": "16384",
+        "max.batch.size": "2048",
+        "poll.interval.ms": "1000",
+        "heartbeat.interval.ms": "0",
+        "errors.max.retries": "3",
+        "errors.retry.delay.max.ms": "500",
+        "errors.retry.timeout.ms": "30000",
+        "errors.tolerance": "all",
+        "errors.log.enable": "true",
+        "errors.log.include.messages": "true",
+        "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "key.converter.schemas.enable": "true",
+        "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "value.converter.schemas.enable": "true",
+        "slot.drop.on.stop": "{{ .Values.connectors.debezium.slot.dropOnStop }}",
+        "plugin.name": "pgoutput"
+      }
+    }
+  {{- end }} 
+  {{- if .Values.connectors.jdbcSink.enabled }}
+  jdbc-sink-connector.json: |
+    {
+      "name": "{{ .Values.connectors.jdbcSink.name }}",
+      "config": {
+        "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+        "connection.url": "{{ .Values.connectors.jdbcSink.database.url }}",
+        "connection.user": "{{ .Values.connectors.jdbcSink.database.user }}",
+        "connection.password": "{{ .Values.connectors.jdbcSink.database.password }}",
+        "topics.regex": "cdc\\.public\\..+",
+        "table.name.format": "{{ .Values.connectors.jdbcSink.table.nameFormat }}",
+        "insert.mode": "{{ .Values.connectors.jdbcSink.insert.mode }}",
+        "delete.enabled": "true",
+        "pk.mode": "record_key",
+        "auto.create": "true",
+        "auto.evolve": "true",
+        "batching.enabled": "true",
+        "batch.size": "{{ .Values.connectors.jdbcSink.batch.size }}",
+        "consumer.auto.offset.reset": "earliest",
+        "max.retries": "5",
+        "retry.backoff.ms": "1000",
+        "errors.tolerance": "all",
+        "errors.log.enable": "true",
+        "errors.log.include.messages": "true",
+        "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "key.converter.schemas.enable": "true",
+        "value.converter": "org.apache.kafka.connect.json.JsonConverter", 
+        "value.converter.schemas.enable": "true",
+        "transforms": "unwrap,route",
+        "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+        "transforms.unwrap.drop.tombstones": "false",
+        "transforms.unwrap.delete.handling.mode": "rewrite",
+        "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
+        "transforms.route.regex": "cdc\\.public\\.(.*)",
+        "transforms.route.replacement": "$1"
+      }
+    }
+  {{- end }}
+  {{- if .Values.connectors.cdcLog.enabled }}
+  cdc-log-connector.json: |
+    {
+      "name": "{{ .Values.connectors.cdcLog.name }}",
+      "config": {
+        "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+        "connection.url": "{{ .Values.connectors.cdcLog.database.url }}",
+        "connection.user": "{{ .Values.connectors.cdcLog.database.user }}",
+        "connection.password": "{{ .Values.connectors.cdcLog.database.password }}",
+        "topics.regex": "cdc\\.public\\..+",
+        "table.name.format": "{{ .Values.connectors.cdcLog.table.nameFormat }}",
+        "insert.mode": "insert",
+        "auto.create": "true",
+        "auto.evolve": "true",
+        "pk.mode": "kafka",
+        "pk.fields": "__connect_topic,__connect_partition,__connect_offset",
+        "batch.size": "{{ .Values.connectors.cdcLog.batch.size }}",
+        "consumer.auto.offset.reset": "earliest",
+        "consumer.group.id": "cdc-log-reset-group",
+        "transforms": "unwrap,addTopic,addTimestamp,flatten",
+        "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+        "transforms.unwrap.drop.tombstones": "false",
+        "transforms.addTopic.type": "org.apache.kafka.connect.transforms.InsertField$Value",
+        "transforms.addTopic.topic.field": "cdc_topic",
+        "transforms.addTimestamp.type": "org.apache.kafka.connect.transforms.TimestampConverter$Value",
+        "transforms.addTimestamp.target.type": "Timestamp",
+        "transforms.addTimestamp.field": "cdc_timestamp",
+        "transforms.flatten.type": "org.apache.kafka.connect.transforms.Flatten$Value",
+        "transforms.flatten.delimiter": "_",
+        "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "value.converter.schemas.enable": "true",
+        "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "key.converter.schemas.enable": "true",
+        "errors.tolerance": "all",
+        "errors.log.enable": "true",
+        "errors.log.include.messages": "true"
+      }
+    }
+  {{- end }}
+  load-connectors.sh: |
+    #!/bin/sh
+    set -e
+    
+    # Configuration with defaults
+    KAFKA_CONNECT_HOST="${KAFKA_CONNECT_HOST:-localhost}"
+    KAFKA_CONNECT_PORT="${KAFKA_CONNECT_PORT:-8083}"
+    KAFKA_CONNECT_URL="${KAFKA_CONNECT_URL:-http://${KAFKA_CONNECT_HOST}:${KAFKA_CONNECT_PORT}}"
+    MAX_WAIT_TIME="${MAX_WAIT_TIME:-300}"
+    RETRY_INTERVAL="${RETRY_INTERVAL:-5}"
+    CONNECTOR_DIR="${CONNECTOR_DIR:-/etc/kafka-connect/connectors}"
+    
+    echo "=== Kafka Connect Connector Loader ==="
+    echo "Target URL: $KAFKA_CONNECT_URL"
+    echo "Max wait time: $MAX_WAIT_TIME seconds"
+    echo "Retry interval: $RETRY_INTERVAL seconds"
+    echo "Connector directory: $CONNECTOR_DIR"
+    echo "======================================="
+    
+    # Function to check if Kafka Connect is ready
+    check_kafka_connect_ready() {
+      local url="$1"
+      curl -f -s --connect-timeout 5 --max-time 10 "$url/connectors" > /dev/null 2>&1
+    }
+    
+    # Function to detect Kafka Connect endpoint when using NodePort
+    detect_kafka_connect_endpoint() {
+      echo "Detecting Kafka Connect endpoint..."
+      
+      # Try different possible endpoints (space-separated for /bin/sh compatibility)
+      local endpoints="http://localhost:8083 http://127.0.0.1:8083 http://kafka-connect:8083 http://kafka-connect.dt.svc.cluster.local:8083"
+      
+      # If running in Kubernetes, try to get the service endpoint
+      if [ -n "$KUBERNETES_SERVICE_HOST" ]; then
+        # Add service-based endpoints
+        local service_name="${KAFKA_CONNECT_SERVICE_NAME:-kafka-connect}"
+        local namespace="${KAFKA_CONNECT_NAMESPACE:-dt}"
+        endpoints="$endpoints http://${service_name}.${namespace}.svc.cluster.local:8083"
+      fi
+      
+      # Loop through endpoints (compatible with /bin/sh)
+      for endpoint in $endpoints; do
+        echo "Trying endpoint: $endpoint"
+        if check_kafka_connect_ready "$endpoint"; then
+          echo "Found working endpoint: $endpoint"
+          KAFKA_CONNECT_URL="$endpoint"
+          return 0
+        fi
+      done
+      
+      return 1
+    }
+    
+    # Function to load a single connector with retry logic
+    load_connector() {
+      local config_file="$1"
+      local connector_name="$2"
+      local max_retries=3
+      local retry_count=0
+      
+      while [ $retry_count -lt $max_retries ]; do
+        echo "Attempt $((retry_count + 1))/$max_retries for connector: $connector_name"
+        
+        # Check if connector already exists
+        if curl -f -s --connect-timeout 5 --max-time 10 "$KAFKA_CONNECT_URL/connectors/$connector_name" > /dev/null 2>&1; then
+          echo "Connector $connector_name already exists, updating configuration..."
+          
+          response=$(curl -X PUT \
+            -H "Content-Type: application/json" \
+            -d @"$config_file" \
+            -w "%{http_code}" \
+            --connect-timeout 10 --max-time 30 \
+            "$KAFKA_CONNECT_URL/connectors/$connector_name/config" 2>/dev/null)
+          http_code="${response: -3}"
+          response_body="${response%???}"
+          
+          if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
+            echo "✓ Successfully updated connector: $connector_name"
+            return 0
+          else
+            echo "✗ Failed to update connector: $connector_name (HTTP: $http_code)"
+            echo "   Error: $response_body"
+          fi
+        else
+          echo "Creating new connector: $connector_name"
+          
+          response=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            -d @"$config_file" \
+            -w "%{http_code}" \
+            --connect-timeout 10 --max-time 30 \
+            "$KAFKA_CONNECT_URL/connectors" 2>/dev/null)
+          http_code="${response: -3}"
+          response_body="${response%???}"
+          
+          if [ "$http_code" = "200" ] || [ "$http_code" = "201" ]; then
+            echo "✓ Successfully created connector: $connector_name"
+            return 0
+          else
+            echo "✗ Failed to create connector: $connector_name (HTTP: $http_code)"
+            echo "   Error: $response_body"
+          fi
+        fi
+        
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -lt $max_retries ]; then
+          echo "Retrying in $RETRY_INTERVAL seconds..."
+          sleep $RETRY_INTERVAL
+        fi
+      done
+      
+      echo "✗ Failed to load connector $connector_name after $max_retries attempts"
+      return 1
+    }
+    
+    # Function to load all connectors
+    load_connectors() {
+      echo "Loading connectors from directory: $CONNECTOR_DIR"
+      
+      local success_count=0
+      local total_count=0
+      
+      # Load all connector configurations
+      for config_file in "$CONNECTOR_DIR"/*.json; do
+        if [ -f "$config_file" ]; then
+          total_count=$((total_count + 1))
+          connector_name=$(basename "$config_file" .json | sed 's/-connector//')
+          
+          echo "----------------------------------------"
+          echo "Processing connector: $connector_name"
+          echo "Config file: $config_file"
+          
+          if load_connector "$config_file" "$connector_name"; then
+            success_count=$((success_count + 1))
+            echo "✓ Connector $connector_name loaded successfully"
+          else
+            echo "✗ Failed to load connector $connector_name"
+          fi
+          
+          echo "Waiting 2 seconds before next connector..."
+          sleep 2
+        fi
+      done
+      
+      echo "======================================="
+      echo "Connector loading summary:"
+      echo "Total connectors: $total_count"
+      echo "Successfully loaded: $success_count"
+      echo "Failed: $((total_count - success_count))"
+      echo "======================================="
+      
+      return $((total_count - success_count))
+    }
+    
+    # Main execution flow
+    echo "Waiting for Kafka Connect to be ready..."
+    
+    # Try the configured URL first
+    wait_count=0
+    max_wait_cycles=$((MAX_WAIT_TIME / RETRY_INTERVAL))
+    
+    while [ $wait_count -lt $max_wait_cycles ]; do
+      if check_kafka_connect_ready "$KAFKA_CONNECT_URL"; then
+        echo "✓ Kafka Connect is ready at: $KAFKA_CONNECT_URL"
+        break
+      fi
+      
+      echo "Kafka Connect not ready yet (attempt $((wait_count + 1))/$max_wait_cycles)"
+      
+      # If we've tried several times, attempt to detect the endpoint
+      if [ $wait_count -eq 5 ] && [ "$KAFKA_CONNECT_URL" = "http://localhost:8083" ]; then
+        echo "Attempting to auto-detect Kafka Connect endpoint..."
+        if detect_kafka_connect_endpoint; then
+          echo "✓ Auto-detected endpoint: $KAFKA_CONNECT_URL"
+          break
+        fi
+      fi
+      
+      echo "Waiting $RETRY_INTERVAL seconds..."
+      sleep $RETRY_INTERVAL
+      wait_count=$((wait_count + 1))
+    done
+    
+    # Final check
+    if ! check_kafka_connect_ready "$KAFKA_CONNECT_URL"; then
+      echo "✗ Failed to connect to Kafka Connect after $MAX_WAIT_TIME seconds"
+      echo "✗ URL attempted: $KAFKA_CONNECT_URL"
+      echo "✗ This may indicate:"
+      echo "  - Kafka Connect is not running"
+      echo "  - Network connectivity issues"
+      echo "  - Incorrect service configuration"
+      exit 1
+    fi
+    
+    echo "✓ Kafka Connect is ready. Starting connector loader..."
+    
+    # Load connectors
+    if load_connectors; then
+      echo "✓ All connectors loaded successfully!"
+    else
+      echo "⚠ Some connectors failed to load, but continuing..."
+    fi
+    
+    # Keep the container running with periodic health checks
+    echo "Connector loader completed. Monitoring mode enabled..."
+    while true; do
+      sleep 300  # Sleep for 5 minutes
+      
+      # Periodic health check
+      if check_kafka_connect_ready "$KAFKA_CONNECT_URL"; then
+        echo "✓ [$(date)] Health check passed - Kafka Connect is responsive"
+      else
+        echo "⚠ [$(date)] Health check failed - Kafka Connect may be down"
+      fi
+    done

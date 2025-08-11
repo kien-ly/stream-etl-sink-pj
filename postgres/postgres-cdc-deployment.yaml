@@ -1,0 +1,397 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-cdc-config
+  # replace suitable namespace
+  namespace: dt
+data:
+  postgresql.conf: |
+    # -----------------------------
+    # PostgreSQL configuration for CDC
+    # -----------------------------
+    
+    # CONNECTIONS AND AUTHENTICATION
+    listen_addresses = '*'
+    port = 5432
+    max_connections = 200
+    
+    # RESOURCE USAGE (except WAL)
+    shared_buffers = 128MB
+    dynamic_shared_memory_type = posix
+    
+    # WRITE-AHEAD LOG (WAL) - Critical for CDC
+    wal_level = logical                    # Enable logical replication for Debezium
+    max_wal_senders = 10                   # Max number of WAL sender processes
+    max_replication_slots = 10             # Max number of replication slots
+    wal_sender_timeout = 60s
+    wal_receiver_timeout = 60s
+    wal_keep_size = 1024MB
+    tcp_keepalives_idle = 60
+
+
+    tcp_keepalives_interval = 10
+    tcp_keepalives_count = 6
+
+    
+    # REPLICATION - Required for CDC
+    hot_standby = on
+    max_logical_replication_workers = 4
+    max_sync_workers_per_subscription = 2
+    
+    # LOGGING
+    log_destination = 'stderr'
+    logging_collector = off
+    log_statement = 'none'
+    log_line_prefix = '%m [%p] %q%u@%d '
+    
+    # PROCESS TITLE
+    cluster_name = 'postgres-cdc'
+    
+    # CLIENT CONNECTION DEFAULTS
+    default_text_search_config = 'pg_catalog.english'
+    
+  pg_hba.conf: |
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+    
+    # "local" is for Unix domain socket connections only
+    local   all             all                                     trust
+    
+    # IPv4 local connections:
+    host    all             all             127.0.0.1/32            trust
+    host    all             all             0.0.0.0/0               md5
+    
+    # IPv6 local connections:
+    host    all             all             ::1/128                 trust
+    
+    # Allow replication connections from localhost, by a user with the
+    # replication privilege.
+    local   replication     all                                     trust
+    host    replication     all             127.0.0.1/32            trust
+    host    replication     all             ::1/128                 trust
+    host    replication     all             0.0.0.0/0               md5
+    
+  init-cdc.sql: |
+    -- ================================================
+    -- CDC Setup Script for Debezium
+    -- ================================================
+    
+    -- Create replication user if not exists
+    DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'replicator') THEN
+            CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replicator_password';
+        END IF;
+    END
+    $$;
+    
+    -- Grant necessary permissions
+    GRANT CONNECT ON DATABASE testdb TO replicator;
+    GRANT USAGE ON SCHEMA public TO replicator;
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO replicator;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO replicator;
+    
+    -- Grant replication permissions to main user
+    ALTER USER postgres WITH REPLICATION;
+    
+    -- Create publication for all tables (required for Debezium)
+    DROP PUBLICATION IF EXISTS debezium_pub;
+    CREATE PUBLICATION debezium_pub FOR ALL TABLES;
+    
+    -- Show current configuration
+    SELECT name, setting FROM pg_settings WHERE name IN (
+        'wal_level', 
+        'max_replication_slots', 
+        'max_wal_senders',
+        'max_logical_replication_workers'
+    );
+    
+    -- Show publications
+    SELECT * FROM pg_publication;
+    
+    -- Show replication slots
+    SELECT * FROM pg_replication_slots;
+    
+  init-dummy-data.sql: |
+    -- ================================================
+    -- PostgreSQL Dummy Data Script
+    -- Tables: public.event, public.product, public.directus_users
+    -- ================================================
+
+    -- Create directus_users table
+    CREATE TABLE IF NOT EXISTS public.directus_users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        first_name VARCHAR(50),
+        last_name VARCHAR(50),
+        email VARCHAR(128) UNIQUE NOT NULL,
+        password VARCHAR(255),
+        location VARCHAR(255),
+        title VARCHAR(50),
+        description TEXT,
+        tags JSON,
+        avatar UUID,
+        language VARCHAR(255) DEFAULT 'en-US',
+        theme VARCHAR(20) DEFAULT 'auto',
+        tfa_secret VARCHAR(255),
+        status VARCHAR(16) DEFAULT 'active',
+        role UUID,
+        token VARCHAR(255),
+        last_access TIMESTAMP,
+        last_page VARCHAR(255),
+        provider VARCHAR(128) DEFAULT 'default',
+        external_identifier VARCHAR(255),
+        auth_data JSON,
+        email_notifications BOOLEAN DEFAULT true,
+        appearance VARCHAR(255),
+        theme_dark VARCHAR(255),
+        theme_light VARCHAR(255),
+        theme_light_overrides JSON,
+        theme_dark_overrides JSON,
+        date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        date_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Create product table
+    CREATE TABLE IF NOT EXISTS public.product (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        price DECIMAL(10,2),
+        category VARCHAR(100),
+        sku VARCHAR(50) UNIQUE,
+        stock_quantity INTEGER DEFAULT 0,
+        is_active BOOLEAN DEFAULT true,
+        tags JSON,
+        metadata JSON,
+        created_by UUID REFERENCES public.directus_users(id),
+        updated_by UUID REFERENCES public.directus_users(id),
+        date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        date_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Create event table
+    CREATE TABLE IF NOT EXISTS public.event (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        event_type VARCHAR(50),
+        start_date TIMESTAMP,
+        end_date TIMESTAMP,
+        location VARCHAR(255),
+        max_participants INTEGER,
+        current_participants INTEGER DEFAULT 0,
+        price DECIMAL(10,2) DEFAULT 0.00,
+        is_public BOOLEAN DEFAULT true,
+        status VARCHAR(20) DEFAULT 'active',
+        tags JSON,
+        metadata JSON,
+        organizer_id UUID REFERENCES public.directus_users(id),
+        created_by UUID REFERENCES public.directus_users(id),
+        updated_by UUID REFERENCES public.directus_users(id),
+        date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        date_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Insert dummy directus_users
+    INSERT INTO public.directus_users (
+        id, first_name, last_name, email, password, location, title, description, 
+        language, status, date_created, date_updated
+    ) VALUES 
+    (gen_random_uuid(), 'John', 'Doe', 'john.doe@example.com', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Ho Chi Minh City', 'Admin', 'System Administrator', 'vi-VN', 'active', NOW(), NOW()),
+    (gen_random_uuid(), 'Jane', 'Smith', 'jane.smith@example.com', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Hanoi', 'Manager', 'Product Manager', 'vi-VN', 'active', NOW(), NOW()),
+    (gen_random_uuid(), 'Alice', 'Johnson', 'alice.johnson@example.com', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Da Nang', 'Developer', 'Full Stack Developer', 'en-US', 'active', NOW(), NOW()),
+    (gen_random_uuid(), 'Bob', 'Wilson', 'bob.wilson@example.com', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Can Tho', 'Analyst', 'Data Analyst', 'vi-VN', 'active', NOW(), NOW()),
+    (gen_random_uuid(), 'Emma', 'Brown', 'emma.brown@example.com', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Hue', 'Designer', 'UI/UX Designer', 'en-US', 'inactive', NOW(), NOW());
+
+    -- Insert dummy products (using subquery to get user IDs)
+    INSERT INTO public.product (
+        name, description, price, category, sku, stock_quantity, is_active, 
+        tags, metadata, created_by, updated_by, date_created, date_updated
+    ) VALUES 
+    ('Laptop ASUS ROG', 'Gaming laptop with RTX 4070', 25000000.00, 'Electronics', 'LAP-ASUS-001', 15, true, 
+     '["gaming", "laptop", "asus"]'::json, '{"warranty": "2 years", "color": "black"}'::json, 
+     (SELECT id FROM public.directus_users WHERE email = 'jane.smith@example.com'), 
+     (SELECT id FROM public.directus_users WHERE email = 'jane.smith@example.com'), NOW(), NOW()),
+
+    ('iPhone 15 Pro', 'Latest iPhone with A17 Pro chip', 30000000.00, 'Electronics', 'IPH-15-PRO', 25, true, 
+     '["smartphone", "apple", "ios"]'::json, '{"storage": "256GB", "color": "titanium"}'::json,
+     (SELECT id FROM public.directus_users WHERE email = 'jane.smith@example.com'), 
+     (SELECT id FROM public.directus_users WHERE email = 'alice.johnson@example.com'), NOW(), NOW()),
+
+    ('Áo thun nam', 'Áo thun cotton 100% chất lượng cao', 350000.00, 'Fashion', 'TSH-MAN-001', 100, true, 
+     '["clothing", "men", "cotton"]'::json, '{"size": ["S", "M", "L", "XL"], "material": "cotton"}'::json,
+     (SELECT id FROM public.directus_users WHERE email = 'emma.brown@example.com'), 
+     (SELECT id FROM public.directus_users WHERE email = 'emma.brown@example.com'), NOW(), NOW()),
+
+    ('Sách lập trình Python', 'Sách học Python từ cơ bản đến nâng cao', 120000.00, 'Books', 'BOOK-PY-001', 50, true, 
+     '["book", "programming", "python"]'::json, '{"pages": 450, "language": "vietnamese"}'::json,
+     (SELECT id FROM public.directus_users WHERE email = 'alice.johnson@example.com'), 
+     (SELECT id FROM public.directus_users WHERE email = 'bob.wilson@example.com'), NOW(), NOW()),
+
+    ('Cà phê Arabica', 'Cà phê rang xay từ hạt Arabica chất lượng cao', 85000.00, 'Food & Beverage', 'COFFEE-ARA-001', 200, true, 
+     '["coffee", "arabica", "organic"]'::json, '{"weight": "500g", "origin": "Vietnam"}'::json,
+     (SELECT id FROM public.directus_users WHERE email = 'bob.wilson@example.com'), 
+     (SELECT id FROM public.directus_users WHERE email = 'john.doe@example.com'), NOW(), NOW());
+
+    -- Insert dummy events
+    INSERT INTO public.event (
+        title, description, event_type, start_date, end_date, location, 
+        max_participants, current_participants, price, is_public, status,
+        tags, metadata, organizer_id, created_by, updated_by, date_created, date_updated
+    ) VALUES 
+    ('Vietnam Tech Conference 2025', 'Hội thảo công nghệ lớn nhất Việt Nam năm 2025', 'conference', 
+     '2025-08-15 09:00:00', '2025-08-16 18:00:00', 'SECC, Ho Chi Minh City', 1000, 250, 500000.00, true, 'active',
+     '["tech", "conference", "vietnam"]'::json, '{"speakers": 20, "sessions": 15}'::json,
+     (SELECT id FROM public.directus_users WHERE email = 'john.doe@example.com'),
+     (SELECT id FROM public.directus_users WHERE email = 'john.doe@example.com'),
+     (SELECT id FROM public.directus_users WHERE email = 'jane.smith@example.com'), NOW(), NOW()),
+
+    ('Workshop React/Next.js', 'Workshop thực hành React và Next.js cho beginners', 'workshop', 
+     '2025-07-20 14:00:00', '2025-07-20 17:00:00', 'Saigon Innovation Hub', 30, 18, 200000.00, true, 'active',
+     '["workshop", "react", "nextjs", "programming"]'::json, '{"level": "beginner", "duration": "3 hours"}'::json,
+     (SELECT id FROM public.directus_users WHERE email = 'alice.johnson@example.com'),
+     (SELECT id FROM public.directus_users WHERE email = 'alice.johnson@example.com'),
+     (SELECT id FROM public.directus_users WHERE email = 'alice.johnson@example.com'), NOW(), NOW()),
+
+    ('Data Science Meetup', 'Meetup hàng tháng cho cộng đồng Data Science', 'meetup', 
+     '2025-07-25 19:00:00', '2025-07-25 21:00:00', 'WeWork Bitexco, Ho Chi Minh City', 50, 35, 0.00, true, 'active',
+     '["datascience", "meetup", "ai", "ml"]'::json, '{"networking": true, "food": "provided"}'::json,
+     (SELECT id FROM public.directus_users WHERE email = 'bob.wilson@example.com'),
+     (SELECT id FROM public.directus_users WHERE email = 'bob.wilson@example.com'),
+     (SELECT id FROM public.directus_users WHERE email = 'bob.wilson@example.com'), NOW(), NOW()),
+
+    ('UI/UX Design Bootcamp', 'Bootcamp thiết kế UI/UX 3 ngày intensive', 'bootcamp', 
+     '2025-08-01 09:00:00', '2025-08-03 17:00:00', 'FPT University HCM', 25, 22, 1500000.00, true, 'active',
+     '["design", "uiux", "bootcamp"]'::json, '{"duration": "3 days", "certificate": true}'::json,
+     (SELECT id FROM public.directus_users WHERE email = 'emma.brown@example.com'),
+     (SELECT id FROM public.directus_users WHERE email = 'emma.brown@example.com'),
+     (SELECT id FROM public.directus_users WHERE email = 'jane.smith@example.com'), NOW(), NOW()),
+
+    ('Startup Pitch Competition', 'Cuộc thi pitch startup cho các team trẻ', 'competition', 
+     '2025-09-10 10:00:00', '2025-09-10 16:00:00', 'HCMC Startup Incubator', 100, 45, 100000.00, true, 'draft',
+     '["startup", "pitch", "competition", "entrepreneur"]'::json, '{"prize": "$10000", "judges": 5}'::json,
+     (SELECT id FROM public.directus_users WHERE email = 'john.doe@example.com'),
+     (SELECT id FROM public.directus_users WHERE email = 'jane.smith@example.com'),
+     (SELECT id FROM public.directus_users WHERE email = 'john.doe@example.com'), NOW(), NOW());
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+  namespace: dt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_DB
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-config
+              mountPath: /etc/postgresql/postgresql.conf
+              subPath: postgresql.conf
+            - name: postgres-config
+              mountPath: /etc/postgresql/pg_hba.conf
+              subPath: pg_hba.conf
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d/01-init-cdc.sql
+              subPath: init-cdc.sql
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d/02-init-dummy-data.sql
+              subPath: init-dummy-data.sql
+          command:
+            - docker-entrypoint.sh
+          args:
+            - postgres
+            - -c
+            - config_file=/etc/postgresql/postgresql.conf
+            - -c
+            - hba_file=/etc/postgresql/pg_hba.conf
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: postgres-storage
+          emptyDir: {}
+        - name: postgres-config
+          configMap:
+            name: postgres-cdc-config
+            items:
+              - key: postgresql.conf
+                path: postgresql.conf
+              - key: pg_hba.conf
+                path: pg_hba.conf
+        - name: init-scripts
+          configMap:
+            name: postgres-cdc-config
+            items:
+              - key: init-cdc.sql
+                path: init-cdc.sql
+              - key: init-dummy-data.sql
+                path: init-dummy-data.sql
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: dt
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP 
