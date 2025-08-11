@@ -520,19 +520,3 @@ connectors:
       nameFormat: "cdc_history"
     batch:
       size: "100"
-  
-## @section Connector Configuration Examples (Deprecated)
-## Connector configurations are now managed via ConfigMap instead of values.yaml
-## This section is kept for reference only
-##
-# Legacy connector configuration (now in ConfigMap):
-# connectors:
-#   debezium:
-#     enabled: true
-#     config:
-#       name: "debezium-postgres"
-#       connector.class: "io.debezium.connector.postgresql.PostgresConnector"
-#       database.hostname: "postgresql.dt.svc.cluster.local"
-#       database.port: "5432"
-#       topic.prefix: "cdc"
-#       # ... other configurations moved to ConfigMap
