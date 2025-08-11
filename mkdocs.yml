@@ -1,0 +1,76 @@
+site_name: PostgreSQL CDC with Kafka Connect & Redpanda
+site_description: Comprehensive Change Data Capture solution using PostgreSQL, Debezium, Kafka Connect, and Redpanda
+site_author: Kien Ly
+site_url: https://kien-ly.github.io/stream-etl-sink-pj/
+
+repo_name: dt-cdc-project
+repo_url: https://github.com/kien-ly/stream-etl-sink-pj
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: blue
+      accent: orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      accent: orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Prerequisites: getting-started/prerequisites.md
+    - Quick Start: getting-started/quick-start.md
+    - Architecture: getting-started/architecture.md
+  - Components:
+    - PostgreSQL: components/postgresql.md
+    - Redpanda: components/redpanda.md
+    - Kafka Connect: components/kafka-connect.md
+    - Monitoring: components/monitoring.md
+  - Security:
+    - Overview: security/overview.md
+    - Credential Management: security/credentials.md
+    - Best Practices: security/best-practices.md
+  - Operations:
+    - Deployment: operations/deployment.md
+    - Testing: operations/testing.md
+    - Troubleshooting: operations/troubleshooting.md
+    - Performance: operations/performance.md
+  - Reference:
+    - Configuration: reference/configuration.md
+    - API: reference/api.md
+    - Sample Data: reference/sample-data.md

@@ -119,10 +119,10 @@ auth:
     enabled: true
     protocol: "SASL_PLAINTEXT"
     mechanism: "SCRAM-SHA-512"
-    # username: "kafka-connect"
-    # password: "kafkaconnect123"  # RedPanda superuser credentials
     username: "superuser"
-    password: "pw123!"
+    passwordSecretRef:
+      name: "redpanda-credentials"
+      key: "password"
 
   ssl:
     enabled: false
@@ -399,7 +399,9 @@ sidecars: []
 ##
 extraEnvFrom:
   - secretRef:
-      name: postgres-secret
+      name: postgres-credentials
+  - secretRef:
+      name: redpanda-credentials
 
 ## @section Kafka Configuration (when kafka.create=true)
 
@@ -470,9 +472,15 @@ connectors:
     database:
       hostname: "postgresql.dt.svc.cluster.local"
       port: "5432"
-      user: "postgres"
-      password: "password123"
-      dbname: "testdb"
+      userSecretRef:
+        name: "postgres-credentials"
+        key: "username"
+      passwordSecretRef:
+        name: "postgres-credentials"
+        key: "password"
+      dbnameSecretRef:
+        name: "postgres-credentials"
+        key: "database"
     kafka:
       bootstrapServers: "dt-redpanda-0.dt-redpanda.dt.svc.cluster.local:9093,dt-redpanda-1.dt-redpanda.dt.svc.cluster.local:9093,dt-redpanda-2.dt-redpanda.dt.svc.cluster.local:9093"
       topicPrefix: "cdc"

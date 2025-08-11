@@ -19,11 +19,18 @@ else
   echo "${GREEN} Namespace '$NAMESPACE' already exists.${NC}"
 fi
 
-echo "${YELLOW}🔑 Creating postgres secret if not exists...${NC}"
+echo "${YELLOW}🔑 Checking postgres credentials...${NC}"
+if ! kubectl get secret postgres-credentials -n $NAMESPACE > /dev/null 2>&1; then
+  echo "${RED}❌ Error: postgres-credentials secret not found!${NC}"
+  echo "Please run: ../secrets/create-secrets.sh"
+  exit 1
+fi
+
+# Create legacy secret name for backward compatibility
 kubectl create secret generic postgres-secret \
-  --from-literal=POSTGRES_USERNAME=postgres \
-  --from-literal=POSTGRES_PASSWORD=password123 \
-  --from-literal=POSTGRES_DB=testdb \
+  --from-literal=POSTGRES_USERNAME=$(kubectl get secret postgres-credentials -n $NAMESPACE -o jsonpath='{.data.username}' | base64 -d) \
+  --from-literal=POSTGRES_PASSWORD=$(kubectl get secret postgres-credentials -n $NAMESPACE -o jsonpath='{.data.password}' | base64 -d) \
+  --from-literal=POSTGRES_DB=$(kubectl get secret postgres-credentials -n $NAMESPACE -o jsonpath='{.data.database}' | base64 -d) \
   --namespace=$NAMESPACE \
   --dry-run=client -o yaml | kubectl apply -f -
 

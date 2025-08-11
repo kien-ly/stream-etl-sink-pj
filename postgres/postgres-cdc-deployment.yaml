@@ -76,13 +76,17 @@ data:
     -- ================================================
     
     -- Create replication user if not exists
+    -- Note: Password will be set via environment variable
     DO $$
     BEGIN
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'replicator') THEN
-            CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replicator_password';
+            CREATE ROLE replicator WITH REPLICATION LOGIN;
         END IF;
     END
     $$;
+    
+    -- Set replicator password from environment
+    ALTER ROLE replicator PASSWORD :'REPLICATOR_PASSWORD';
     
     -- Grant necessary permissions
     GRANT CONNECT ON DATABASE testdb TO replicator;
@@ -312,6 +316,11 @@ spec:
                   key: POSTGRES_DB
             - name: PGDATA
               value: "/var/lib/postgresql/data/pgdata"
+            - name: REPLICATOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: replicator-password
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
