@@ -1,5 +1,5 @@
 #!/bin/bash
-NAMESPACE=dt
+NAMESPACE=dt-postgres
 
 set -e
 
@@ -21,9 +21,8 @@ fi
 
 echo "${YELLOW}🔑 Checking postgres credentials...${NC}"
 if ! kubectl get secret postgres-credentials -n $NAMESPACE > /dev/null 2>&1; then
-  echo "${RED}❌ Error: postgres-credentials secret not found!${NC}"
-  echo "Please run: ../secrets/create-secrets.sh"
-  exit 1
+  echo "${YELLOW}⚠️ postgres-credentials secret not found. Creating secrets...${NC}"
+  bash create-secrets.sh
 fi
 
 # Create legacy secret name for backward compatibility
@@ -56,8 +55,11 @@ kubectl exec -n $NAMESPACE deployment/postgresql -- psql -U postgres -d testdb -
 echo "Checking replication slots..."
 kubectl exec -n $NAMESPACE deployment/postgresql -- psql -U postgres -d testdb -c "SELECT * FROM pg_replication_slots;"
 
-echo "Checking table data..."
-kubectl exec -n $NAMESPACE deployment/postgresql -- psql -U postgres -d testdb -c "SELECT table_name, row_count FROM (SELECT 'directus_users' as table_name, COUNT(*) as row_count FROM public.directus_users UNION ALL SELECT 'product' as table_name, COUNT(*) as row_count FROM public.product UNION ALL SELECT 'event' as table_name, COUNT(*) as row_count FROM public.event) t;"
+echo "List database..."
+kubectl exec -n $NAMESPACE deployment/postgresql -- psql -U postgres -d testdb -c "\\l"
+
+# echo "Checking table data..."
+# kubectl exec -n $NAMESPACE deployment/postgresql -- psql -U postgres -d testdb -c "SELECT table_name, row_count FROM (SELECT 'directus_users' as table_name, COUNT(*) as row_count FROM public.directus_users UNION ALL SELECT 'product' as table_name, COUNT(*) as row_count FROM public.product UNION ALL SELECT 'event' as table_name, COUNT(*) as row_count FROM public.event) t;"
 # kubectl exec -n redpanda2 deployment/postgresql -- psql -U postgres -d testdb -c "SELECT table_name, row_count FROM (SELECT 'directus_users' as table_name, COUNT(*) as row_count FROM public.directus_users UNION ALL SELECT 'product' as table_name, COUNT(*) as row_count FROM public.product UNION ALL SELECT 'event' as table_name, COUNT(*) as row_count FROM public.event) t;"
 
 echo "${GREEN}🎉 PostgreSQL CDC setup verification completed!${NC}"

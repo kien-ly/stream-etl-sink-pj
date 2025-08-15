@@ -3,14 +3,6 @@
 -- Tables: public.event, public.product, public.directus_users
 -- ================================================
 
--- Create cdcdb database for JDBC sink connector
-CREATE DATABASE cdcdb;
-
--- Connect to cdcdb and create basic structure
-\c cdcdb;
-
--- Create schema for CDC data
-CREATE SCHEMA IF NOT EXISTS cdc;
 
 -- Switch back to main database for dummy data
 \c testdb;

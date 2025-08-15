@@ -1,0 +1,1 @@
+kubectl delete all --all -n dt-postgres && kubectl delete namespace dt-postgres
